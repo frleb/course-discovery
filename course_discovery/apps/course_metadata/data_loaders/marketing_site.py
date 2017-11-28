@@ -141,6 +141,8 @@ class SubjectMarketingSiteDataLoader(AbstractMarketingSiteDataLoader):
 
     def process_node(self, data):
         slug = data['field_subject_url_slug']
+        # I have no idea if this is bogus, or what data will come in for language when not 'und'.
+        language_code = 'en-us' if (data['language'] == 'und') else data['language']
         defaults = {
             'uuid': data['uuid'],
             'name': data['title'],
@@ -149,19 +151,22 @@ class SubjectMarketingSiteDataLoader(AbstractMarketingSiteDataLoader):
             'card_image_url': self._get_nested_url(data.get('field_subject_card_image')),
             # NOTE (CCB): This is not a typo. Yes, the banner image for subjects is in a field with xseries in the name.
             'banner_image_url': self._get_nested_url(data.get('field_xseries_banner_image'))
-
         }
 
         # There is a bug with django-parler when using django's update_or_create() so we manually update or create.
         try:
             subject = Subject.objects.get(slug=slug, partner=self.partner)
+            subject.set_current_language(language_code)
             for key, value in defaults.items():
                 setattr(subject, key, value)
             subject.save()
         except Subject.DoesNotExist:
             new_values = {'slug': slug, 'partner': self.partner}
             new_values.update(defaults)
+            # In this case, this sets the language too late.  It already has an exception on the next line.
+            # > ValueError: language_code can't be null, use translation.activate(..) when accessing translated models outside the request/response loop.
             subject = Subject(**new_values)
+            subject.set_current_language(language_code)
             subject.save()
 
         logger.info('Processed subject with slug [%s].', slug)
